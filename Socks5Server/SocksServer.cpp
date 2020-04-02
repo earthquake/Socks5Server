@@ -108,7 +108,7 @@ int CheckAuthentication(SOCKET c, char *buf, int ret)
 	answer[0] = 5;
 
 	for (i=0; i<METHOD_NUMBER; i++)
-		for (j=0; j<=buf[1]; j++)
+		for (j=0; j<buf[1]; j++)
 			if (buf[j+2] == method_numbers[i])
 			{
 				answer[1] = method_numbers[i];
