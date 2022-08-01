@@ -8,6 +8,8 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
+#define SECONDS(x) (x * 1000 )
+#define AUTHENTICATION_ENABLED 0 // change to 1 for username password, leave 0 to require no authentication
 #define METHOD_NUMBER 2
 
 // hardcoded inactive creds, use proper creds check if you want this
@@ -23,12 +25,12 @@ typedef int(*fn)(SOCKET, int, char*);
 static fn method_functions[METHOD_NUMBER] =
 {
 	method_no_auth_required,
-//	method_username_password, // disabled for security purposes
+	method_username_password, 
 };
 static char method_numbers[METHOD_NUMBER] =
 {
 	0,
-//	2,
+	2,
 };
 
 
@@ -71,7 +73,7 @@ int method_username_password(SOCKET c, int count, char *rv)
 		return FALSE;
 	}
 	p = rv + 2;
-	printf("%hu > %hu - 2", (unsigned char)rv[1], count);
+	//printf("%hu > %hu - 2", (unsigned char)rv[1], count); // commented these weird prints
 	memcpy_s(username, 256, p, (unsigned char)rv[1]);
 	p = rv + 2 + rv[1];
 
@@ -79,7 +81,7 @@ int method_username_password(SOCKET c, int count, char *rv)
 	{
 		if (verbose) wprintf(L"[-] SOCKS thread(%d) method_no_auth_required2: %ld > %ld\n", GetCurrentThreadId(), p[0] + rv[1] + 3, count);
 	}
-	printf("%hu + %hu > %hu - 3", (unsigned char)p[0], (unsigned char)rv[1], count);
+	// printf("%hu + %hu > %hu - 3", (unsigned char)p[0], (unsigned char)rv[1], count); // commented these weird prints
 	memcpy_s(password, 256, p + 1, (unsigned char)p[0]);
 
 	if ((strncmp(username, PREDEF_USERNAME, strlen(PREDEF_USERNAME)) == 0) && (strncmp(password, PREDEF_PASSWORD, strlen(PREDEF_PASSWORD)) == 0))
@@ -378,14 +380,17 @@ void HandleClient(void *param)
 		if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient wrong authnum: %ld\n", GetCurrentThreadId(), authnum);
 		goto exitthread;
 	}
-
+	if (!AUTHENTICATION_ENABLED) {
+	
+		authnum = 0;
+	}
 	if (authnum > 0)
 	{
 		if (verbose) wprintf(L"[+] SOCKS thread(%d) HandleClient authentication invoked: %ld\n", GetCurrentThreadId(), authnum);
 
 		if ((ret = recv(sClientConnection, buf, sizeof buf, 0)) > 2)
 		{
-			if (!method_functions[authnum](sClientConnection, ret, buf))
+			if (!method_functions[AUTHENTICATION_ENABLED](sClientConnection, ret, buf))
 			{ 
 				if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient authentication failed: %ld\n", GetCurrentThreadId(), authnum);
 				goto exitthread;
@@ -430,7 +435,7 @@ void HandleClient(void *param)
 
 	while (run)
 	{
-		ret = WaitForMultipleObjects(2, hEvents, FALSE, INFINITE);
+		ret = WaitForMultipleObjects(2, hEvents, FALSE, SECONDS(1)); // edited to make thread die after a completion of his tasks
 		if ((ret - WAIT_OBJECT_0) < 0 || (ret - WAIT_OBJECT_0) > (2 - 1))
 		{
 			wprintf(L"[-] SOCKS thread(%d) WaitForMultipleObjects index out of range %ld\n", GetCurrentThreadId(), ret);
