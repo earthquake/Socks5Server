@@ -124,7 +124,7 @@ int CheckAuthentication(SOCKET c, char *buf, int ret)
 				{
 					if (verbose) wprintf(L"[-] SOCKS thread(%d) CheckAuthentication: %ld\n", GetCurrentThreadId(), ret);
 				}
-				return ret-1;
+				return method_numbers[i];
 			}
 
 	answer[1] = (unsigned)0xFF;
@@ -387,9 +387,9 @@ void HandleClient(void *param)
 		goto exitthread;
 	}
 
-	if (!AUTHENTICATION_ENABLED) {
+	if (AUTHENTICATION_ENABLED) {
 	
-		authnum = 0;
+		authnum = 1;
 	}
 
 if (authnum > 0)
