@@ -8,6 +8,10 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
+#define SECONDS(x) (x * 1000 )
+
+#define AUTHENTICATION_ENABLED 1 // change to 1 for username password, leave 0 to require no authentication
+
 #define METHOD_NUMBER 2
 
 // hardcoded inactive creds, use proper creds check if you want this
@@ -23,12 +27,14 @@ typedef int(*fn)(SOCKET, int, char*);
 static fn method_functions[METHOD_NUMBER] =
 {
 	method_no_auth_required,
-//	method_username_password, // disabled for security purposes
+	method_username_password
 };
+
+
 static char method_numbers[METHOD_NUMBER] =
 {
 	0,
-//	2,
+	2
 };
 
 
@@ -63,23 +69,23 @@ int method_username_password(SOCKET c, int count, char *rv)
 
 	if ((unsigned char)rv[1] > count - 2)
 	{
-		if (verbose) wprintf(L"[-] SOCKS thread(%d) method_no_auth_required1: %ld > %ld\n", GetCurrentThreadId(), rv[1], count);
+		if (verbose) wprintf(L"[-] SOCKS thread(%d) method_username_password: %ld > %ld\n", GetCurrentThreadId(), rv[1], count);
+
 		if ((ret = send(c, answer, 2, 0)) == SOCKET_ERROR)
 		{
-			if (verbose) wprintf(L"[-] SOCKS thread(%d) method_no_auth_required1 %ld %ld\n", GetCurrentThreadId(), ret, WSAGetLastError());
+			if (verbose) wprintf(L"[-] SOCKS thread(%d) method_username_password %ld %ld\n", GetCurrentThreadId(), ret, WSAGetLastError());
 		}
 		return FALSE;
 	}
 	p = rv + 2;
-	printf("%hu > %hu - 2", (unsigned char)rv[1], count);
 	memcpy_s(username, 256, p, (unsigned char)rv[1]);
 	p = rv + 2 + rv[1];
 
 	if ((unsigned char)p[0] + (unsigned char)rv[1] > count - 3)
 	{
-		if (verbose) wprintf(L"[-] SOCKS thread(%d) method_no_auth_required2: %ld > %ld\n", GetCurrentThreadId(), p[0] + rv[1] + 3, count);
+		if (verbose) wprintf(L"[-] SOCKS thread(%d) method_username_password: %ld > %ld\n", GetCurrentThreadId(), p[0] + rv[1] + 3, count);
 	}
-	printf("%hu + %hu > %hu - 3", (unsigned char)p[0], (unsigned char)rv[1], count);
+
 	memcpy_s(password, 256, p + 1, (unsigned char)p[0]);
 
 	if ((strncmp(username, PREDEF_USERNAME, strlen(PREDEF_USERNAME)) == 0) && (strncmp(password, PREDEF_PASSWORD, strlen(PREDEF_PASSWORD)) == 0))
@@ -87,10 +93,12 @@ int method_username_password(SOCKET c, int count, char *rv)
 		answer[1] = 0x00;
 		if ((ret = send(c, answer, 2, 0)) == SOCKET_ERROR)
 		{
-			if (verbose) wprintf(L"[-] SOCKS thread(%d) method_no_auth_required2 %ld %ld\n", GetCurrentThreadId(), ret, WSAGetLastError());
+			if (verbose) wprintf(L"[-] SOCKS thread(%d) method_username_password failed %ld %ld\n", GetCurrentThreadId(), ret, WSAGetLastError());
 		}
-		if (verbose) printf("[-] SOCKS thread(%d) method_no_auth_required succeed for: %s\n", GetCurrentThreadId(), username);
-		return TRUE;
+
+		if (verbose) printf("[-] SOCKS thread(%d) method_username_password succeed for: %s\n", GetCurrentThreadId(), username);
+
+	return TRUE;
 	}
 
 	if ((ret = send(c, answer, 2, 0)) == SOCKET_ERROR)
@@ -116,7 +124,7 @@ int CheckAuthentication(SOCKET c, char *buf, int ret)
 				{
 					if (verbose) wprintf(L"[-] SOCKS thread(%d) CheckAuthentication: %ld\n", GetCurrentThreadId(), ret);
 				}
-				return i;
+				return ret-1;
 			}
 
 	answer[1] = (unsigned)0xFF;
@@ -256,7 +264,7 @@ SOCKET DoConnection(SOCKET c, char *buf, int ret)
 	sockaddr_in sockaddrin;
 	sockaddr_in6 sockaddrin6;
 
-	if (buf[0] == 5)
+if (buf[0] == 5)
 	{
 		if (getAddressInfo(&sockaddrin, &sockaddrin6, buf, ret) < 0) {
 			if (verbose) wprintf(L"[-] SOCKS thread(%d) DoConnection could not create socket structs\n", GetCurrentThreadId());
@@ -329,7 +337,7 @@ void HandleClient(void *param)
 	SOCKET sRelayConnection;
 	//fd_set fdset, fdsetclear;
 	//timeval timeout;
-	char buf[1024];
+	char buf[1024]; 
 	int  ret, recvn, sentn, sent;
 	BOOL run = true;
 	int authnum = -1;
@@ -337,7 +345,7 @@ void HandleClient(void *param)
 
 	HANDLE hEvents[2];
 
-	if ((ret = recv(sClientConnection, buf, sizeof buf, 0)) > 1)
+	if ((ret = recv(sClientConnection, buf, sizeof buf, 0)) > 0)
 	{
 		if (buf[0] == 4)
 		{
@@ -379,13 +387,18 @@ void HandleClient(void *param)
 		goto exitthread;
 	}
 
-	if (authnum > 0)
+	if (!AUTHENTICATION_ENABLED) {
+	
+		authnum = 0;
+	}
+
+if (authnum > 0)
 	{
 		if (verbose) wprintf(L"[+] SOCKS thread(%d) HandleClient authentication invoked: %ld\n", GetCurrentThreadId(), authnum);
 
 		if ((ret = recv(sClientConnection, buf, sizeof buf, 0)) > 2)
 		{
-			if (!method_functions[authnum](sClientConnection, ret, buf))
+			if (!method_functions[AUTHENTICATION_ENABLED] (sClientConnection, ret, buf))
 			{ 
 				if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient authentication failed: %ld\n", GetCurrentThreadId(), authnum);
 				goto exitthread;
@@ -400,6 +413,7 @@ void HandleClient(void *param)
 
 	if ((ret = recv(sClientConnection, buf, sizeof buf, 0)) > 6)
 	{
+		sRelayConnection = 0;
 		if ((sRelayConnection = DoConnection(sClientConnection, buf, ret)) == NULL)
 		{
 			if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient no socket created\n", GetCurrentThreadId());
@@ -430,7 +444,8 @@ void HandleClient(void *param)
 
 	while (run)
 	{
-		ret = WaitForMultipleObjects(2, hEvents, FALSE, INFINITE);
+		ret = WaitForMultipleObjects(2, hEvents, FALSE, SECONDS(1));
+
 		if ((ret - WAIT_OBJECT_0) < 0 || (ret - WAIT_OBJECT_0) > (2 - 1))
 		{
 			wprintf(L"[-] SOCKS thread(%d) WaitForMultipleObjects index out of range %ld\n", GetCurrentThreadId(), ret);
@@ -440,13 +455,17 @@ void HandleClient(void *param)
 		switch (ret - WAIT_OBJECT_0)
 		{
 			case 0:
-				if ((recvn = recv(sClientConnection, buf, sizeof buf, 0)) > 1)
+				if ((recvn = recv(sClientConnection, buf, sizeof buf, 0)) >= 0)
 				{
 					sent = 0;
 					while (sent < recvn) {
 						do
 						{
-							if (!run) break;
+							if (!run) { 
+								
+								break; 
+							
+							}
 							if ((sentn = send(sRelayConnection, buf + sent, recvn - sent, 0)) != SOCKET_ERROR)
 							{
 								sent += sentn;
@@ -474,13 +493,15 @@ void HandleClient(void *param)
 				}
 				break;
 			case 1:
-				if ((recvn = recv(sRelayConnection, buf, sizeof buf, 0)) > 1)
+				if ((recvn = recv(sRelayConnection, buf, sizeof buf, 0)) >= 0)
 				{
 					sent = 0;
 					while (sent < recvn) {
 						do 
 						{
-							if (!run) break;
+							if (!run) { 
+								break; 
+							}
 							if ((sentn = send(sClientConnection, buf + sent, recvn - sent, 0)) != SOCKET_ERROR)
 							{
 								sent += sentn;
@@ -494,7 +515,9 @@ void HandleClient(void *param)
 									break;
 								}
 							}
-						} while (WSAGetLastError() == 10035);
+						} while (
+							
+							WSAGetLastError() == 10035);
 					}
 				}
 				else
@@ -505,99 +528,33 @@ void HandleClient(void *param)
 					// error
 					if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient select1 recv error: %ld %ld\n", GetCurrentThreadId(), recvn, WSAGetLastError());
 					run = FALSE;
+					break;
 				}
+
 				break;
+
 			default:
-				printf("default\n");
+
 				break;
 		}
 	}
-	/*
-	FD_ZERO(&fdsetclear);
-	FD_SET(c,  &fdsetclear);
-	FD_SET(ss, &fdsetclear);
 
-	while (run)
-	{
-		timeout.tv_sec = 60 * 15;
-		timeout.tv_usec = 0;
-		memcpy(&fdset, &fdsetclear, sizeof(fdset));
-
-		switch (select(0, &fdset, 0, 0, &timeout))
-		{
-		case -1:
-			if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient select error: %ld\n", GetCurrentThreadId(), WSAGetLastError());
-			run = FALSE;
-			break;
-		case 0:
-			//if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient select timeout\n", GetCurrentThreadId());
-			break;
-		default:
-			if (FD_ISSET(ss, &fdset))
-			{
-				if ((recvn = recv(ss, buf, sizeof buf, 0)) > 1)
-				{
-					sent = 0;
-					while (sent < recvn) {
-						if ((sentn = send(c, buf + sent, recvn - sent, 0)) > 1)
-						{
-							sent += sentn;
-						}
-						else
-						{
-							if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient select1 send error: %ld %ld\n", GetCurrentThreadId(), sentn, WSAGetLastError());
-							run = FALSE;
-							break;
-						}
-					}
-				}
-				else
-				{
-					// FIN recv'd
-					if (recvn == 0)
-						goto exitthread;
-					// error
-					if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient select1 recv error: %ld %ld\n", GetCurrentThreadId(), sentn, WSAGetLastError());
-					run = FALSE;
-				}
-			}
-			if (FD_ISSET(c, &fdset))
-			{
-				if ((recvn = recv(c, buf, sizeof buf, 0)) > 1)
-				{
-					sent = 0;
-					while (sent < recvn) {
-						if ((sentn = send(ss, buf + sent, recvn - sent, 0)) > 1)
-						{
-							sent += sentn;
-						}
-						else
-						{
-							if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient select2 send error: %ld %ld\n", GetCurrentThreadId(), sentn, WSAGetLastError());
-							run = FALSE;
-							break;
-						}
-					}
-				}
-				else
-				{
-					// FIN recv'd
-					if (recvn == 0)
-						goto exitthread;
-					// error
-					if (verbose) wprintf(L"[-] SOCKS thread(%d) HandleClient select2 recv error: %ld %ld\n", GetCurrentThreadId(), sentn, WSAGetLastError());
-					run = FALSE;
-				}
-			}
-		}
-	}
-	*/
 exitthread:
+	wprintf(L"[+] Exiting Thread \n");
 	closesocket(sClientConnection);
-	closesocket(sRelayConnection);
+	try {
+		closesocket(sRelayConnection);
+	}
+
+	catch (...) {
+	
+	}
+	
 
 	return;
 }
+
+
 
 int StartServer(WCHAR *ip, WCHAR *port)
 {
