@@ -387,12 +387,8 @@ void HandleClient(void *param)
 		goto exitthread;
 	}
 
-	if (AUTHENTICATION_ENABLED) {
-	
-		authnum = 1;
-	}
 
-if (authnum > 0)
+if (AUTHENTICATION_ENABLED)
 	{
 		if (verbose) wprintf(L"[+] SOCKS thread(%d) HandleClient authentication invoked: %ld\n", GetCurrentThreadId(), authnum);
 
