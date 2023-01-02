@@ -4,10 +4,18 @@
 #include <windows.h>
 #include "SocksServer.h"
 
-int main()
+static wchar_t* charToWChar(const char* text)
 {
-	StartServer(L"127.0.0.1", L"1080");
+    const size_t size = strlen(text) + 1;
+    wchar_t* wText = new wchar_t[size];
+    swprintf(wText, size, L"%hs", text);
+    return wText;
+}
+
+int main(int argc, char ** argv)
+{
+    if (argc < 3) printf("Usage : .\\Socks5Server [Listening IP] [Listening Port]");
+	else StartServer(charToWChar(argv[1]), charToWChar(argv[2]));
 
     return 0;
 }
-
